@@ -6,8 +6,15 @@ function hasNonEmptyEnvValue(env: Record<string, string>, key: string): boolean 
   return typeof env[key] === "string" && env[key].trim().length > 0;
 }
 
+export function parseModelProvider(model: string | null | undefined): string | null {
+  if (typeof model !== "string") return null;
+  const trimmed = model.trim();
+  if (!trimmed.includes("/")) return null;
+  return trimmed.slice(0, trimmed.indexOf("/")).trim() || null;
+}
+
 export function isLiteLlmModel(model: string | null | undefined): boolean {
-  return typeof model === "string" && model.trim().startsWith("litellm/");
+  return parseModelProvider(model) === "litellm";
 }
 
 function defaultOpenCodeAuthPaths(homeDir: string): string[] {

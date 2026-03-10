@@ -18,7 +18,7 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import { isOpenCodeUnknownSessionError, parseOpenCodeJsonl } from "./parse.js";
 import { ensureOpenCodeModelConfiguredAndAvailable } from "./models.js";
-import { hydrateLiteLlmApiKey, isLiteLlmModel } from "./auth.js";
+import { hydrateLiteLlmApiKey, isLiteLlmModel, parseModelProvider } from "./auth.js";
 
 const __moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const PAPERCLIP_SKILLS_CANDIDATES = [
