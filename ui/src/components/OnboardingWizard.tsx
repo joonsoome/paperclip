@@ -916,7 +916,11 @@ export function OnboardingWizard() {
                           <p className="text-muted-foreground">
                             If auth fails, set{" "}
                             <span className="font-mono">
-                              {adapterType === "cursor" ? "CURSOR_API_KEY" : "OPENAI_API_KEY"}
+                              {adapterType === "cursor"
+                                ? "CURSOR_API_KEY"
+                                : adapterType === "opencode_local"
+                                  ? "LITELLM_API_KEY"
+                                  : "OPENAI_API_KEY"}
                             </span>{" "}
                             in
                             env or run{" "}
