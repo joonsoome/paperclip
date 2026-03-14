@@ -26,6 +26,7 @@ const PAPERCLIP_SKILLS_CANDIDATES = [
   path.resolve(__moduleDir, "../../skills"),
   path.resolve(__moduleDir, "../../../../../skills"),
 ];
+const OPENCODE_PROMPT_TRANSPORT = "run_message_v1";
 
 function firstNonEmptyLine(text: string): string {
   return (
@@ -188,14 +189,20 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const runtimeSessionParams = parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
+  const runtimePromptTransport = asString(runtimeSessionParams.promptTransport, "");
   const canResumeSession =
     runtimeSessionId.length > 0 &&
+    runtimePromptTransport === OPENCODE_PROMPT_TRANSPORT &&
     (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(cwd));
   const sessionId = canResumeSession ? runtimeSessionId : null;
   if (runtimeSessionId && !canResumeSession) {
+    const mismatchReason =
+      runtimePromptTransport !== OPENCODE_PROMPT_TRANSPORT
+        ? `it was created with prompt transport "${runtimePromptTransport || "unknown"}"`
+        : `it was saved for cwd "${runtimeSessionCwd}"`;
     await onLog(
       "stderr",
-      `[paperclip] OpenCode session "${runtimeSessionId}" was saved for cwd "${runtimeSessionCwd}" and will not be resumed in "${cwd}".\n`,
+      `[paperclip] OpenCode session "${runtimeSessionId}" will not be resumed because ${mismatchReason} and this run requires "${OPENCODE_PROMPT_TRANSPORT}".\n`,
     );
   }
 
@@ -230,7 +237,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (instructionsPrefix.length > 0) {
       return [
         `Loaded agent instructions from ${resolvedInstructionsFilePath}`,
-        `Prepended instructions + path directive to stdin prompt (relative references from ${instructionsDir}).`,
+        `Prepended instructions + path directive to the OpenCode run message (relative references from ${instructionsDir}).`,
       ];
     }
     return [
@@ -274,6 +281,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (model) args.push("--model", model);
     if (variant) args.push("--variant", variant);
     if (extraArgs.length > 0) args.push(...extraArgs);
+    args.push(prompt);
     return args;
   };
 
@@ -285,7 +293,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
         command,
         cwd,
         commandNotes,
-        commandArgs: [...args, `<stdin prompt ${prompt.length} chars>`],
+        commandArgs: args.map((value, idx) =>
+          idx === args.length - 1 ? `<prompt ${prompt.length} chars>` : value,
+        ),
         env: redactEnvForLogs(env),
         prompt,
         promptMetrics,
@@ -296,7 +306,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     const proc = await runChildProcess(runId, command, args, {
       cwd,
       env: runtimeEnv,
-      stdin: prompt,
       timeoutSec,
       graceSec,
       onLog,
@@ -333,6 +342,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
       ? ({
           sessionId: resolvedSessionId,
           cwd,
+          promptTransport: OPENCODE_PROMPT_TRANSPORT,
           ...(workspaceId ? { workspaceId } : {}),
           ...(workspaceRepoUrl ? { repoUrl: workspaceRepoUrl } : {}),
           ...(workspaceRepoRef ? { repoRef: workspaceRepoRef } : {}),
