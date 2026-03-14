@@ -15,6 +15,14 @@ export function agentJwtSecretCheck(configPath?: string): CheckResult {
     };
   }
 
+  if (process.env.BETTER_AUTH_SECRET?.trim()) {
+    return {
+      name: "Agent JWT secret",
+      status: "pass",
+      message: "BETTER_AUTH_SECRET is set in environment and will be reused for local adapter authentication",
+    };
+  }
+
   const envPath = resolveAgentJwtEnvFile(configPath);
   const fileSecret = readAgentJwtSecretFromEnvFile(envPath);
 

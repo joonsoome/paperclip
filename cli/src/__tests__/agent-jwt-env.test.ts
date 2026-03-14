@@ -24,6 +24,7 @@ describe("agent jwt env helpers", () => {
   beforeEach(() => {
     process.env = { ...ORIGINAL_ENV };
     delete process.env.PAPERCLIP_AGENT_JWT_SECRET;
+    delete process.env.BETTER_AUTH_SECRET;
   });
 
   afterEach(() => {
@@ -59,6 +60,16 @@ describe("agent jwt env helpers", () => {
 
     const result = agentJwtSecretCheck(configPath);
     expect(result.status).toBe("pass");
+  });
+
+  it("doctor check passes when BETTER_AUTH_SECRET exists in adjacent .env", () => {
+    const configPath = tempConfigPath();
+    const envPath = resolveAgentJwtEnvFile(configPath);
+    fs.writeFileSync(envPath, "BETTER_AUTH_SECRET=better-auth-secret\n", { mode: 0o600 });
+
+    const result = agentJwtSecretCheck(configPath);
+    expect(result.status).toBe("pass");
+    expect(result.message).toContain("BETTER_AUTH_SECRET");
   });
 
   it("quotes hash-prefixed env values so dotenv round-trips them", () => {

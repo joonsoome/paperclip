@@ -79,6 +79,14 @@ function resolveAgentJwtSecretStatus(
     };
   }
 
+  const betterAuthEnvValue = process.env.BETTER_AUTH_SECRET?.trim();
+  if (betterAuthEnvValue) {
+    return {
+      status: "pass",
+      message: "using BETTER_AUTH_SECRET fallback",
+    };
+  }
+
   if (existsSync(envFilePath)) {
     const parsed = parseEnvFileContents(readFileSync(envFilePath, "utf-8"));
     const fileValue = typeof parsed.PAPERCLIP_AGENT_JWT_SECRET === "string" ? parsed.PAPERCLIP_AGENT_JWT_SECRET.trim() : "";
@@ -86,6 +94,15 @@ function resolveAgentJwtSecretStatus(
       return {
         status: "warn",
         message: `found in ${envFilePath} but not loaded`,
+      };
+    }
+
+    const betterAuthFileValue =
+      typeof parsed.BETTER_AUTH_SECRET === "string" ? parsed.BETTER_AUTH_SECRET.trim() : "";
+    if (betterAuthFileValue) {
+      return {
+        status: "warn",
+        message: `BETTER_AUTH_SECRET found in ${envFilePath} but not loaded`,
       };
     }
   }
