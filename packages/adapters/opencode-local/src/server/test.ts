@@ -12,7 +12,14 @@ import {
   ensurePathInEnv,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
-import { discoverOpenCodeModels, ensureOpenCodeModelConfiguredAndAvailable } from "./models.js";
+import {
+  discoverOpenCodeAgents,
+  ensureOpenCodeAgentConfiguredAndAvailable,
+  discoverOpenCodeModels,
+  ensureOpenCodeModelConfiguredAndAvailable,
+  resolveConfiguredOpenCodeAgentModel,
+  resolveOpenCodeCommand,
+} from "./models.js";
 import { parseOpenCodeJsonl } from "./parse.js";
 import { hydrateLiteLlmApiKey, isLiteLlmModel } from "./auth.js";
 
@@ -56,7 +63,7 @@ export async function testEnvironment(
 ): Promise<AdapterEnvironmentTestResult> {
   const checks: AdapterEnvironmentCheck[] = [];
   const config = parseObject(ctx.config);
-  const command = asString(config.command, "opencode");
+  const command = resolveOpenCodeCommand(config.command);
   const cwd = asString(config.cwd, process.cwd());
 
   try {
@@ -101,8 +108,13 @@ export async function testEnvironment(
   }
 
   let runtimeEnv = normalizeEnv(ensurePathInEnv({ ...process.env, ...env }));
+  const configuredAgent = asString(config.agent, "").trim();
   const configuredModel = asString(config.model, "").trim();
-  if (isLiteLlmModel(configuredModel)) {
+  const configuredAgentModel = configuredAgent
+    ? await resolveConfiguredOpenCodeAgentModel({ agent: configuredAgent })
+    : null;
+  const effectiveModelId = configuredModel || configuredAgentModel || "";
+  if (isLiteLlmModel(effectiveModelId)) {
     const hydrated = await hydrateLiteLlmApiKey(runtimeEnv);
     runtimeEnv = hydrated.env;
     if (hydrated.source === "openai_env") {
@@ -157,6 +169,7 @@ export async function testEnvironment(
     checks.every((check) => check.code !== "opencode_cwd_invalid" && check.code !== "opencode_command_unresolvable");
 
   let modelValidationPassed = false;
+  let agentValidationPassed = false;
 
   if (canRunProbe && configuredModel) {
     try {
@@ -252,7 +265,60 @@ export async function testEnvironment(
     }
   }
 
-  if (canRunProbe && modelValidationPassed) {
+  if (canRunProbe && configuredAgent) {
+    try {
+      const discoveredAgents = await discoverOpenCodeAgents({ command, cwd, env: runtimeEnv });
+      if (discoveredAgents.length > 0) {
+        checks.push({
+          code: "opencode_agents_discovered",
+          level: "info",
+          message: `Discovered ${discoveredAgents.length} agent profile(s) from OpenCode.`,
+        });
+      } else {
+        checks.push({
+          code: "opencode_agents_empty",
+          level: "warn",
+          message: "OpenCode returned no agent profiles.",
+          hint: "Run `opencode agent list` and verify your opencode agent config.",
+        });
+      }
+    } catch (err) {
+      checks.push({
+        code: "opencode_agents_discovery_failed",
+        level: "warn",
+        message: err instanceof Error ? err.message : "OpenCode agent discovery failed.",
+        hint: "Run `opencode agent list` manually to verify agent config.",
+      });
+    }
+
+    try {
+      await ensureOpenCodeAgentConfiguredAndAvailable({
+        agent: configuredAgent,
+        command,
+        cwd,
+        env: runtimeEnv,
+      });
+      checks.push({
+        code: "opencode_agent_configured",
+        level: "info",
+        message: `Configured agent profile: ${configuredAgent}`,
+      });
+      agentValidationPassed = true;
+    } catch (err) {
+      checks.push({
+        code: "opencode_agent_invalid",
+        level: "error",
+        message: err instanceof Error ? err.message : "Configured OpenCode agent profile is unavailable.",
+        hint: "Run `opencode agent list` and choose an available OpenCode agent profile.",
+      });
+    }
+  }
+
+  const hasInvocationTarget = configuredModel.length > 0 || configuredAgent.length > 0;
+  const targetsValidated =
+    (!configuredModel || modelValidationPassed) && (!configuredAgent || agentValidationPassed);
+
+  if (canRunProbe && hasInvocationTarget && targetsValidated) {
     const extraArgs = (() => {
       const fromExtraArgs = asStringArray(config.extraArgs);
       if (fromExtraArgs.length > 0) return fromExtraArgs;
@@ -262,7 +328,8 @@ export async function testEnvironment(
     const probeModel = configuredModel;
 
     const args = ["run", "--format", "json"];
-    args.push("--model", probeModel);
+    if (configuredAgent) args.push("--agent", configuredAgent);
+    if (probeModel) args.push("--model", probeModel);
     if (variant) args.push("--variant", variant);
     if (extraArgs.length > 0) args.push(...extraArgs);
 
