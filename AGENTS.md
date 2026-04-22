@@ -23,6 +23,8 @@ This AGENTS.md is fork-local and origin-only. Do not propose it upstream unless 
 
 - Repo root: `/root/paperclip`
 - Dev CT role: code-server + Codex + OpenCode + Paperclip source checkout
+- Primary public deployment endpoint: `https://paper.joonsoo.me`
+- Treat `paper.joonsoo.me` as the external service surface; keep local CT work and public deploy state separate.
 - Default runtime mode in this CT:
   - local/self-hosted
   - single-node
@@ -115,6 +117,7 @@ If a change is potentially upstreamable, branch from a fresh sync of `upstream/m
 1. Local operation and deploy notes belong on this fork and should be reflected on `origin/master` in small, readable commits.
    - Keep local CT-specific docs, service files, and bootstrap fixes here.
    - Keep runtime state in `deploy/` and `instances/`, not in tracked source files.
+   - For the live service, assume `paper.joonsoo.me` is the public face of this workspace.
 2. Upstreamable work belongs on a fresh branch from `upstream/master`.
    - Use a focused `fix/...`, `feat/...`, or `docs/...` branch.
    - Keep fork-local deploy/ops changes out of the upstream PR unless they are generally useful.
@@ -500,3 +503,4 @@ If the user asks for initial setup work, the preferred order is:
 - Prefer source checkout + fork workflow over opaque one-click installs.
 - Prefer changes that can graduate into upstream PRs.
 - Keep operational root-only container assumptions explicit when they matter for local DB bootstrap or worktree flows.
+- Public deploys should be documented against `paper.joonsoo.me`, not as generic anonymous internet exposure.
