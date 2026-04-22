@@ -9,6 +9,15 @@ import * as schema from "./schema/index.js";
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("./migrations", import.meta.url));
 const DRIZZLE_MIGRATIONS_TABLE = "__drizzle_migrations";
 const MIGRATIONS_JOURNAL_JSON = fileURLToPath(new URL("./migrations/meta/_journal.json", import.meta.url));
+const DEFAULT_DB_POOL_MAX = 4;
+
+export function resolveDbPoolMax() {
+  const raw = process.env.PAPERCLIP_DB_POOL_MAX?.trim();
+  if (!raw) return DEFAULT_DB_POOL_MAX;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) return DEFAULT_DB_POOL_MAX;
+  return Math.min(parsed, 20);
+}
 
 function createUtilitySql(url: string) {
   return postgres(url, { max: 1, onnotice: () => {} });
@@ -46,7 +55,7 @@ export type MigrationState =
     };
 
 export function createDb(url: string) {
-  const sql = postgres(url);
+  const sql = postgres(url, { max: resolveDbPoolMax(), onnotice: () => {} });
   return drizzlePg(sql, { schema });
 }
 

@@ -5,6 +5,7 @@ import postgres from "postgres";
 import {
   applyPendingMigrations,
   inspectMigrations,
+  resolveDbPoolMax,
 } from "./client.js";
 import {
   getEmbeddedPostgresTestSupport,
@@ -14,6 +15,7 @@ import {
 const cleanups: Array<() => Promise<void>> = [];
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
+const originalPoolMaxEnv = process.env.PAPERCLIP_DB_POOL_MAX;
 
 async function createTempDatabase(): Promise<string> {
   const db = await startEmbeddedPostgresTestDatabase("paperclip-db-client-");
@@ -34,6 +36,24 @@ afterEach(async () => {
     const cleanup = cleanups.pop();
     await cleanup?.();
   }
+  if (originalPoolMaxEnv === undefined) delete process.env.PAPERCLIP_DB_POOL_MAX;
+  else process.env.PAPERCLIP_DB_POOL_MAX = originalPoolMaxEnv;
+});
+
+describe("resolveDbPoolMax", () => {
+  it("defaults to a small pool size", () => {
+    delete process.env.PAPERCLIP_DB_POOL_MAX;
+
+    expect(resolveDbPoolMax()).toBe(4);
+  });
+
+  it("allows explicit overrides and caps extreme values", () => {
+    process.env.PAPERCLIP_DB_POOL_MAX = "8";
+    expect(resolveDbPoolMax()).toBe(8);
+
+    process.env.PAPERCLIP_DB_POOL_MAX = "999";
+    expect(resolveDbPoolMax()).toBe(20);
+  });
 });
 
 if (!embeddedPostgresSupport.supported) {
