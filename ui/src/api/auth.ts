@@ -60,11 +60,17 @@ function extractAuthError(payload: AuthErrorBody, status: number) {
   return new AuthApiError(message, status, payload, code);
 }
 
-async function authPost(path: string, body: Record<string, unknown>) {
+async function authPost(path: string, body: Record<string, unknown>, headers?: HeadersInit) {
+  const requestHeaders = new Headers({ "Content-Type": "application/json" });
+  if (headers) {
+    new Headers(headers).forEach((value, key) => {
+      requestHeaders.set(key, value);
+    });
+  }
   const res = await fetch(`/api/auth${path}`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: requestHeaders,
     body: JSON.stringify(body),
   });
   const payload = await res.json().catch(() => null);
@@ -109,8 +115,11 @@ export const authApi = {
     await authPost("/sign-in/email", input);
   },
 
-  signUpEmail: async (input: { name: string; email: string; password: string }) => {
-    await authPost("/sign-up/email", input);
+  signUpEmail: async (
+    input: { name: string; email: string; password: string },
+    options?: { inviteToken?: string },
+  ) => {
+    await authPost("/sign-up/email", input, options?.inviteToken ? { "x-paperclip-invite-token": options.inviteToken } : undefined);
   },
 
   getProfile: async (): Promise<CurrentUserProfile> => {
