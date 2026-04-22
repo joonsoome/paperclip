@@ -1,216 +1,489 @@
 # AGENTS.md
 
-Guidance for human and AI contributors working in this repository.
+Guidance for Human and AI contributors working in this repository.
+
+This repository is a fork-oriented Paperclip workspace running in a Proxmox development LXC.
+Primary goal: keep `/root/paperclip` usable for local dev/deploy, while making upstreamable changes in small, clean branches.
+This AGENTS.md is fork-local and origin-only. Do not propose it upstream unless explicitly requested.
+
+---
 
 ## 1. Purpose
 
-Paperclip is a control plane for AI-agent companies.
-The current implementation target is V1 and is defined in `doc/SPEC-implementation.md`.
+- This workspace is for developing and testing **Paperclip** (`paperclip.ing`) in a self-hosted dev CT.
+- Treat this repo as a **fork-first workspace**:
+  - `origin` = your fork
+  - `upstream` = `paperclipai/paperclip`
+- Prefer changes that can be proposed upstream as focused PRs.
+- Prefer plugins/extensions over core product divergence when possible.
 
-## 2. Read This First
+---
 
-Before making changes, read in this order:
+## 2. Local Environment Contract
 
-1. `doc/GOAL.md`
-2. `doc/PRODUCT.md`
-3. `doc/SPEC-implementation.md`
-4. `doc/DEVELOPING.md`
-5. `doc/DATABASE.md`
+- Repo root: `/root/paperclip`
+- Dev CT role: code-server + Codex + OpenCode + Paperclip source checkout
+- Default runtime mode in this CT:
+  - local/self-hosted
+  - single-node
+  - persistent filesystem
+  - loopback-only unless the user explicitly asks otherwise
+- Do **not** assume Kubernetes, horizontal scaling, or ephemeral workers.
+- This CT intentionally runs as `root`.
+  - Root-only embedded PostgreSQL bootstrap is supported here.
+  - If you change local DB/bootstrap/worktree code, keep it root-safe.
+  - Do not reintroduce assumptions that require a non-root user just to make local embedded PostgreSQL work.
 
-`doc/SPEC.md` is long-horizon product context.
-`doc/SPEC-implementation.md` is the concrete V1 build contract.
+### Paths
 
-## 3. Repo Map
+- Repository root: `/root/paperclip`
+- Optional sibling workspaces for experiments: `/root/workspaces/*`
+- Temporary notes/plans inside repo: `doc/plans/`
+- Never create random planning docs in the repo root.
 
-- `server/`: Express REST API and orchestration services
-- `ui/`: React + Vite board UI
-- `packages/db/`: Drizzle schema, migrations, DB clients
-- `packages/shared/`: shared types, constants, validators, API path constants
-- `packages/adapters/`: agent adapter implementations (Claude, Codex, Cursor, etc.)
-- `packages/adapter-utils/`: shared adapter utilities
-- `packages/plugins/`: plugin system packages
-- `doc/`: operational and product docs
+---
 
-## 4. Dev Setup (Auto DB)
+## 3. Read This First
 
-Use embedded PGlite in dev by leaving `DATABASE_URL` unset.
+Before making changes, read in this order when relevant:
 
-```sh
-pnpm install
-pnpm dev
+1. `AGENTS.md`
+2. `doc/GOAL.md`
+3. `doc/PRODUCT.md`
+4. `doc/SPEC-implementation.md`
+5. `doc/DEVELOPING.md`
+6. `doc/DATABASE.md`
+7. `CONTRIBUTING.md`
+
+Notes:
+- `doc/SPEC-implementation.md` is the concrete build contract.
+- `doc/SPEC.md` is longer-horizon context.
+- If repo guidance conflicts with local habits, follow repository docs first, then this file.
+- When present, treat `.claude/` as supplemental workspace guidance for local operator behavior.
+
+---
+
+## 4. Repo Map
+
+- `server/` - Express REST API and orchestration services
+- `ui/` - React + Vite UI
+- `packages/db/` - schema, migrations, DB clients
+- `packages/shared/` - shared types/constants/validators
+- `packages/adapters/` - adapter implementations
+- `packages/adapter-utils/` - shared adapter utilities
+- `packages/plugins/` - plugin system packages
+- `doc/` - product, architecture, ops, and plan docs
+- `deploy/` - local operational artifacts for this CT
+- `instances/` - local runtime data and instance state
+
+Keep local deployment/service files isolated from upstream PRs.
+
+---
+
+## 5. Fork / Remote Strategy
+
+Expected git remote model:
+
+```bash
+git remote -v
+# origin   <your-fork-url>
+# upstream https://github.com/paperclipai/paperclip.git
 ```
 
-This starts:
+If `upstream` is missing, add it:
 
-- API: `http://localhost:3100`
-- UI: `http://localhost:3100` (served by API server in dev middleware mode)
+```bash
+git remote add upstream https://github.com/paperclipai/paperclip.git
+git fetch upstream --prune
+```
 
-Quick checks:
+### Branch roles
 
-```sh
+- `master`: local fork's default integration branch
+- `lab/dev`: optional branch for CT-specific convenience changes that should not be proposed upstream
+- `feat/...`: upstreamable feature work
+- `fix/...`: upstreamable bug fixes
+- `docs/...`: documentation-only work
+- `chore/...`: local maintenance or tooling-only changes
+
+### Golden rule
+
+If a change is potentially upstreamable, branch from a fresh sync of `upstream/master` (or the upstream default branch if renamed), not from a messy local branch.
+
+---
+
+## 6. Standard Branch Workflow
+
+### A. Sync before starting work
+
+```bash
+cd /root/paperclip
+git fetch origin --prune
+git fetch upstream --prune
+git checkout master
+git rebase upstream/master || git merge --ff-only upstream/master
+```
+
+If the fork uses a different default branch than `master`, inspect `upstream/HEAD` and adapt.
+
+### B. Create a focused branch
+
+```bash
+git checkout -b fix/<short-topic>
+# or
+git checkout -b feat/<short-topic>
+# or
+git checkout -b docs/<short-topic>
+```
+
+### C. Implement and verify
+
+Run the smallest relevant verification first, then the full handoff checks before claiming completion.
+
+### D. Keep commits clean
+
+- One logical change per branch.
+- Avoid mixing refactors with behavior changes.
+- Avoid bundling local CT/systemd/nginx tweaks with upstream PR code.
+
+### E. Push to fork
+
+```bash
+git push -u origin <branch-name>
+```
+
+### F. Upstream PR target
+
+- Target upstream Paperclip, not only the fork, when the change is generic and maintainable.
+- Use the repo PR template exactly.
+- This AGENTS.md and other local ops docs stay origin-only unless the user explicitly asks to sync them upstream.
+
+---
+
+## 7. Development Commands
+
+Assume Node.js + pnpm environment is already available in the CT.
+
+### Install
+
+```bash
+cd /root/paperclip
+pnpm install
+```
+
+### Main development loop
+
+```bash
+pnpm dev
+pnpm dev:once
+pnpm dev:server
+```
+
+### Build and verification
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm test:e2e
+pnpm build
+```
+
+### DB workflow
+
+```bash
+pnpm db:generate
+pnpm db:migrate
+```
+
+### Health checks
+
+```bash
 curl http://localhost:3100/api/health
 curl http://localhost:3100/api/companies
 ```
 
-Reset local dev DB:
+### Local dev DB reset
 
-```sh
+```bash
 rm -rf data/pglite
 pnpm dev
 ```
 
-## 5. Core Engineering Rules
+---
+
+## 8. Dev Deploy Policy in This CT
+
+There are two approved local run modes.
+
+### Interactive hacking mode
+
+Use when actively editing code:
+
+```bash
+cd /root/paperclip
+pnpm dev
+```
+
+### Stable smoke mode
+
+Use when you want a persistent local instance without watch churn:
+
+```bash
+cd /root/paperclip
+pnpm dev:once
+```
+
+Rules:
+- Prefer loopback binding only.
+- Do not expose Paperclip publicly from this CT unless the user explicitly asks.
+- Do not treat this dev CT as production.
+- Keep root-compatible embedded PostgreSQL and worktree flows working in the local CT.
+- Avoid introducing hard dependencies on a host `psql` binary for required local flows when a repository-native fallback exists.
+
+---
+
+## 9. Recommended Plugin Strategy for This Workspace
+
+Current recommendation for this CT:
+
+### Default plugin set
+
+1. **ACP runtime plugin**
+   - Purpose: run Codex CLI / OpenCode / Gemini CLI / Claude Code as subprocess-backed coding sessions.
+   - This is the primary plugin for this workspace.
+
+2. **GitHub Issues Sync plugin**
+   - Install only when issue sync is actually needed.
+   - Good fit when Paperclip work should mirror GitHub issues.
+
+### Deferred for another session
+
+- Hindsight memory integration
+- Slack / Discord / Telegram chat plugins
+- Obsidian or other document-centric plugins
+
+Reasoning:
+- This CT is mainly a coding/dev orchestration environment.
+- ACP is the highest-value integration for Codex/OpenCode.
+- Keep memory/inbox/chat expansion out of scope unless explicitly requested.
+
+---
+
+## 10. ACP Plugin Expectations
+
+When ACP is installed/configured, use these local assumptions:
+
+- enabled agents: `codex,opencode`
+- default agent: `codex`
+- default mode: `persistent`
+- default cwd: `/root/paperclip`
+- max sessions per thread: conservative in local dev
+
+Recommended local ACP baseline:
+
+```text
+enabledAgents=codex,opencode
+defaultAgent=codex
+defaultMode=persistent
+defaultCwd=/root/paperclip
+sessionIdleTimeoutMs=1800000
+sessionMaxAgeMs=28800000
+maxSessionsPerThread=2
+```
+
+Notes:
+- The upstream ACP README defaults `defaultCwd` to `/workspace`; in this CT we intentionally override it to `/root/paperclip`.
+- Keep concurrency conservative to reduce repo contamination and context confusion.
+- If parallel agent work is necessary, prefer separate branches or separate sibling workspaces.
+
+---
+
+## 11. Workspace Safety Rules
+
+Because this is a live fork workspace:
+
+1. Never delete or reset unrelated user work.
+2. Never force-push without explicit instruction.
+3. Never rewrite `main`/`master` history unless explicitly requested.
+4. Never commit secrets, tokens, `.env`, auth cookies, or local machine identifiers.
+5. Do not bake `/root/...`-specific paths into upstreamable code unless they are local examples or config.
+6. Keep local deployment/service files isolated from upstream PRs.
+7. Keep root-only container support working for local embedded PostgreSQL and worktree bootstrap paths.
+
+### Parallel work caution
+
+- Avoid multiple agents editing the same checked-out tree simultaneously.
+- If separate efforts run in parallel, use one of:
+  - separate git branches
+  - separate sibling worktrees/workspaces
+  - separate issue-focused sessions
+
+---
+
+## 12. Core Engineering Rules
 
 1. Keep changes company-scoped.
-Every domain entity should be scoped to a company and company boundaries must be enforced in routes/services.
+2. Keep contracts synchronized across db/shared/server/ui.
+3. Preserve governance and control-plane invariants.
+4. Prefer additive changes over wholesale strategic rewrites.
+5. Use plugins for extension-shaped features when that is the better architectural fit.
 
-2. Keep contracts synchronized.
-If you change schema/API behavior, update all impacted layers:
-- `packages/db` schema and exports
-- `packages/shared` types/constants/validators
-- `server` routes/services
-- `ui` API clients and pages
+Do not turn Paperclip core into:
+- a general chat app
+- a pull-request review tool
+- a random local-lab fork with hidden behavior
 
-3. Preserve control-plane invariants.
-- Single-assignee task model
-- Atomic issue checkout semantics
-- Approval gates for governed actions
-- Budget hard-stop auto-pause behavior
-- Activity logging for mutating actions
+---
 
-4. Do not replace strategic docs wholesale unless asked.
-Prefer additive updates. Keep `doc/SPEC.md` and `doc/SPEC-implementation.md` aligned.
-
-5. Keep repo plan docs dated and centralized.
-When you are creating a plan file in the repository itself, new plan documents belong in `doc/plans/` and should use `YYYY-MM-DD-slug.md` filenames. This does not replace Paperclip issue planning: if a Paperclip issue asks for a plan, update the issue `plan` document per the `paperclip` skill instead of creating a repo markdown file.
-
-## 6. Database Change Workflow
+## 13. Database Change Workflow
 
 When changing data model:
 
 1. Edit `packages/db/src/schema/*.ts`
-2. Ensure new tables are exported from `packages/db/src/schema/index.ts`
+2. Ensure exports are updated in `packages/db/src/schema/index.ts`
 3. Generate migration:
 
-```sh
+```bash
 pnpm db:generate
 ```
 
 4. Validate compile:
 
-```sh
+```bash
 pnpm -r typecheck
 ```
 
-Notes:
-- `packages/db/drizzle.config.ts` reads compiled schema from `dist/schema/*.js`
-- `pnpm db:generate` compiles `packages/db` first
+If a local flow uses embedded PostgreSQL, keep it root-safe and avoid hidden non-root assumptions.
 
-## 7. Verification Before Hand-off
+---
 
-Default local/agent test path:
+## 14. Verification Before Hand-off
 
-```sh
+### Minimum verification
+
+Run what matches the change:
+
+```bash
 pnpm test
 ```
 
-This is the cheap default and only runs the Vitest suite. Browser suites stay opt-in:
+### Full handoff check
 
-```sh
-pnpm test:e2e
-pnpm test:release-smoke
-```
+Before saying work is complete, run:
 
-Run the browser suites only when your change touches them or when you are explicitly verifying CI/release flows.
-
-Run this full check before claiming done:
-
-```sh
+```bash
 pnpm -r typecheck
 pnpm test:run
 pnpm build
 ```
 
-If anything cannot be run, explicitly report what was not run and why.
+If UI/browser-specific behavior was touched, also consider:
 
-## 8. API and Auth Expectations
+```bash
+pnpm test:e2e
+```
 
-- Base path: `/api`
-- Board access is treated as full-control operator context
-- Agent access uses bearer API keys (`agent_api_keys`), hashed at rest
-- Agent keys must not access other companies
+If any step cannot be run, explicitly report:
+- what was not run
+- why it was not run
+- what risk remains
 
-When adding endpoints:
+---
 
-- apply company access checks
-- enforce actor permissions (board vs agent)
-- write activity log entries for mutations
-- return consistent HTTP errors (`400/401/403/404/409/422/500`)
+## 15. Planning Docs
 
-## 9. UI Expectations
+When creating a plan file in this repository:
 
-- Keep routes and nav aligned with available API surface
-- Use company selection context for company-scoped pages
-- Surface failures clearly; do not silently ignore API errors
+- place it under `doc/plans/`
+- use `YYYY-MM-DD-slug.md`
+- do not scatter ad-hoc planning markdown across the repo
 
-## 10. Pull Request Requirements
+---
 
-When creating a pull request (via `gh pr create` or any other method), you **must** read and fill in every section of [`.github/PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md). Do not craft ad-hoc PR bodies — use the template as the structure for your PR description. Required sections:
+## 16. Pull Request Rules
 
-- **Thinking Path** — trace reasoning from project context to this change (see `CONTRIBUTING.md` for examples)
-- **What Changed** — bullet list of concrete changes
-- **Verification** — how a reviewer can confirm it works
-- **Risks** — what could go wrong
-- **Model Used** — the AI model that produced or assisted with the change (provider, exact model ID, context window, capabilities). Write "None — human-authored" if no AI was used.
-- **Checklist** — all items checked
+When preparing a PR:
 
-## 11. Definition of Done
+1. Read `.github/PULL_REQUEST_TEMPLATE.md`
+2. Fill every section
+3. Do not invent an ad-hoc PR body
+4. Include a **Model Used** section
+5. Keep PRs focused and reviewable
 
-A change is done when all are true:
+PR sections must include:
+- Thinking Path
+- What Changed
+- Verification
+- Risks
+- Model Used
+- Checklist
 
-1. Behavior matches `doc/SPEC-implementation.md`
-2. Typecheck, tests, and build pass
-3. Contracts are synced across db/shared/server/ui
-4. Docs updated when behavior or commands change
-5. PR description follows the [PR template](.github/PULL_REQUEST_TEMPLATE.md) with all sections filled in (including Model Used)
+### Upstream contribution preference
 
-## 11. Fork-Specific: HenkDz/paperclip
+Prefer upstream PRs for:
+- bug fixes
+- docs improvements
+- small targeted improvements
+- plugin-oriented extensions
 
-This is a fork of `paperclipai/paperclip` with QoL patches and an **external-only** Hermes adapter story on branch `feat/externalize-hermes-adapter` ([tree](https://github.com/HenkDz/paperclip/tree/feat/externalize-hermes-adapter)).
+Be careful with uncoordinated large core features. If the feature is more like an extension, prefer plugin route first.
 
-### Branch Strategy
+---
 
-- `feat/externalize-hermes-adapter` → core has **no** `hermes-paperclip-adapter` dependency and **no** built-in `hermes_local` registration. Install Hermes via the Adapter Plugin manager (`@henkey/hermes-paperclip-adapter` or a `file:` path).
-- Older fork branches may still document built-in Hermes; treat this file as authoritative for the externalize branch.
+## 17. What Codex Should Do By Default
 
-### Hermes (plugin only)
+When asked to work in `/root/paperclip`, Codex should generally:
 
-- Register through **Board → Adapter manager** (same as Droid). Type remains `hermes_local` once the package is loaded.
-- UI uses generic **config-schema** + **ui-parser.js** from the package — no Hermes imports in `server/` or `ui/` source.
-- Optional: `file:` entry in `~/.paperclip/adapter-plugins.json` for local dev of the adapter repo.
+1. Inspect current branch and remotes first.
+2. Check for uncommitted local changes before editing.
+3. Create a focused feature/fix/docs branch unless the user explicitly asks to work in-place.
+4. Make the smallest change that solves the task.
+5. Run relevant verification.
+6. Summarize exactly what changed, what was verified, and what remains risky.
+7. Prefer upstream-safe architecture over one-off local hacks.
 
-### Local Dev
+### Default preflight commands
 
-- Fork runs on port 3101+ (auto-detects if 3100 is taken by upstream instance)
-- `npx vite build` hangs on NTFS — use `node node_modules/vite/bin/vite.js build` instead
-- Server startup from NTFS takes 30-60s — don't assume failure immediately
-- Kill ALL paperclip processes before starting: `pkill -f "paperclip"; pkill -f "tsx.*index.ts"`
-- Vite cache survives `rm -rf dist` — delete both: `rm -rf ui/dist ui/node_modules/.vite`
+```bash
+cd /root/paperclip
+git status --short --branch
+git remote -v
+node -v
+pnpm -v
+```
 
-### Fork QoL Patches (not in upstream)
+---
 
-These are local modifications in the fork's UI. If re-copying source, these must be re-applied:
+## 18. What Codex Must Avoid
 
-1. **stderr_group** — amber accordion for MCP init noise in `RunTranscriptView.tsx`
-2. **tool_group** — accordion for consecutive non-terminal tools (write, read, search, browser)
-3. **Dashboard excerpt** — `LatestRunCard` strips markdown, shows first 3 lines/280 chars
+- Do not silently upgrade broad dependencies unless required.
+- Do not add large new framework layers without need.
+- Do not convert plugin-worthy work into hardcoded core logic too quickly.
+- Do not expose the CT to LAN/public internet by default.
+- Do not claim a PR is ready without verification.
+- Do not create PRs with missing template sections.
+- Do not propose this AGENTS.md upstream unless the user explicitly asks.
 
-### Plugin System
+---
 
-PR #2218 (`feat/external-adapter-phase1`) adds external adapter support. See root `AGENTS.md` for full details.
+## 19. Suggested First Tasks for This Workspace
 
-- Adapters can be loaded as external plugins via `~/.paperclip/adapter-plugins.json`
-- The plugin-loader should have ZERO hardcoded adapter imports — pure dynamic loading
-- `createServerAdapter()` must include ALL optional fields (especially `detectModel`)
-- Built-in UI adapters can shadow external plugin parsers — remove built-in when fully externalizing
-- Reference external adapters: Hermes (`@henkey/hermes-paperclip-adapter` or `file:`) and Droid (npm)
+If the user asks for initial setup work, the preferred order is:
+
+1. verify remotes and branch hygiene
+2. install dependencies
+3. confirm `pnpm dev` boots locally
+4. install/configure ACP plugin for Codex/OpenCode path usage
+5. set ACP default cwd to `/root/paperclip`
+6. smoke test one Codex session and one OpenCode session
+7. only then add optional plugins such as GitHub Issues sync
+
+---
+
+## 20. Local Notes for This User's Homelab
+
+- This is a development CT, not the canonical long-term memory service.
+- Keep the setup simple and reversible.
+- Prefer source checkout + fork workflow over opaque one-click installs.
+- Prefer changes that can graduate into upstream PRs.
+- Keep operational root-only container assumptions explicit when they matter for local DB bootstrap or worktree flows.
