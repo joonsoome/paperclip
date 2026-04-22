@@ -1,14 +1,18 @@
 import type { Request, RequestHandler } from "express";
 import type { IncomingHttpHeaders } from "node:http";
+import { createHash } from "node:crypto";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { toNodeHandler } from "better-auth/node";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import type { Db } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   authAccounts,
   authSessions,
   authUsers,
   authVerifications,
+  invites,
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 import { resolvePaperclipInstanceId } from "../home-paths.js";
@@ -28,6 +32,29 @@ type BetterAuthInstance = ReturnType<typeof betterAuth>;
 
 const AUTH_COOKIE_PREFIX_FALLBACK = "default";
 const AUTH_COOKIE_PREFIX_INVALID_SEGMENTS_RE = /[^a-zA-Z0-9_-]+/g;
+const INVITE_TOKEN_PREFIXES = ["pcp_invite_", "pcp_bootstrap_"] as const;
+
+function hashInviteToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+export async function findInviteForSignup(db: Db, rawToken: string) {
+  const token = rawToken.trim();
+  if (!token || !INVITE_TOKEN_PREFIXES.some((prefix) => token.startsWith(prefix))) return null;
+  const invite = await db
+    .select()
+    .from(invites)
+    .where(eq(invites.tokenHash, hashInviteToken(token)))
+    .then((rows) => rows[0] ?? null);
+  if (!invite) return null;
+  if (invite.revokedAt || invite.acceptedAt) return null;
+  if (invite.expiresAt.getTime() <= Date.now()) return null;
+  if (invite.inviteType === "bootstrap_ceo") return invite;
+  if (invite.companyId && (invite.allowedJoinTypes === "human" || invite.allowedJoinTypes === "both")) {
+    return invite;
+  }
+  return null;
+}
 
 export function deriveAuthCookiePrefix(instanceId = resolvePaperclipInstanceId()): string {
   const scopedInstanceId = instanceId
@@ -102,6 +129,27 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
     baseURL: baseUrl,
     secret,
     trustedOrigins: effectiveTrustedOrigins,
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/sign-up/email") {
+          return;
+        }
+
+        const inviteToken = ctx.headers?.get("x-paperclip-invite-token");
+        if (!inviteToken) {
+          throw new APIError("FORBIDDEN", {
+            message: "Account creation is invite-only. Use an invite link to create an account.",
+          });
+        }
+
+        const invite = await findInviteForSignup(db, inviteToken);
+        if (!invite) {
+          throw new APIError("FORBIDDEN", {
+            message: "This invite cannot be used to create an account.",
+          });
+        }
+      }),
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: {
