@@ -110,6 +110,19 @@ git fetch upstream --prune
 
 If a change is potentially upstreamable, branch from a fresh sync of `upstream/master` (or the upstream default branch if renamed), not from a messy local branch.
 
+### Operational workflow
+
+1. Local operation and deploy notes belong on this fork and should be reflected on `origin/master` in small, readable commits.
+   - Keep local CT-specific docs, service files, and bootstrap fixes here.
+   - Keep runtime state in `deploy/` and `instances/`, not in tracked source files.
+2. Upstreamable work belongs on a fresh branch from `upstream/master`.
+   - Use a focused `fix/...`, `feat/...`, or `docs/...` branch.
+   - Keep fork-local deploy/ops changes out of the upstream PR unless they are generally useful.
+3. The same checkout may be used for deployment, but not as a moving target.
+   - Deploy from a stable branch state, preferably `master` or a release branch pinned for ops.
+   - Do not make and ship code changes from the same uncommitted tree at the same time.
+   - When switching between deploy and development states, stop/restart the managed service cleanly.
+
 ---
 
 ## 6. Standard Branch Workflow
