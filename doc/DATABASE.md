@@ -19,6 +19,10 @@ That's it. On first start the server:
 
 Data persists across restarts in `~/.paperclip/instances/default/db/`. To reset local dev data, delete that directory.
 
+When running Paperclip as `root` inside a dedicated container, embedded PostgreSQL will automatically ask the library to create a local `postgres` system user on first boot if the host does not already provide one. That keeps the zero-config database path working in root-only environments.
+
+If the workspace lives under `/root`, that generated `postgres` user still needs execute/traverse access to the workspace path so the packaged PostgreSQL binaries can be launched. In a dedicated container, an execute-only traverse grant on `/root` is enough.
+
 If you need to apply pending migrations manually, run:
 
 ```sh

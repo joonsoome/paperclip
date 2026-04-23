@@ -43,6 +43,7 @@ type EmbeddedPostgresCtor = new (opts: {
   port: number;
   persistent: boolean;
   initdbFlags?: string[];
+  createPostgresUser?: boolean;
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -61,6 +62,10 @@ type ClosableDb = ReturnType<typeof createDb> & {
 
 function nonEmpty(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
 }
 
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -136,6 +141,7 @@ async function ensureEmbeddedPostgres(dataDir: string, preferredPort: number): P
     port,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: logBuffer.append,
     onError: logBuffer.append,
   });

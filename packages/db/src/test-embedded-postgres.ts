@@ -17,6 +17,7 @@ type EmbeddedPostgresCtor = new (opts: {
   port: number;
   persistent: boolean;
   initdbFlags?: string[];
+  createPostgresUser?: boolean;
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -44,6 +45,10 @@ function getReservedTestPorts(): Set<number> {
       .map((value) => Number.parseInt(value.trim(), 10)),
   ];
   return new Set(configuredPorts.filter((port) => Number.isInteger(port) && port > 0 && port <= 65535));
+}
+
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
 }
 
 async function getEmbeddedPostgresCtor(): Promise<EmbeddedPostgresCtor> {
@@ -93,6 +98,7 @@ async function createEmbeddedPostgresTestInstance(tempDirPrefix: string) {
     port,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: () => {},
     onError: () => {},
   });
