@@ -1,3 +1,46 @@
+## Model Compatibility Policy (JOO-10)
+
+OpenCode adapter enforces model compatibility guardrails to prevent runtime failures from unsupported or problematic models.
+
+### Forbidden Models
+
+The following models are blocked due to known issues:
+
+| Model | Reason | Recommended Alternatives |
+|-------|--------|-------------------------|
+| `qwen/qwen3.5-122b` | Context size limits frequently exceeded; prone to MidStreamFallbackError | `qwen/qwen3.5-35b`, `qwen/qwen3-coder-next` |
+| `litellm/qwen3.5-122b-a10b-instruct` | Context size limits frequently exceeded; prone to MidStreamFallbackError | `litellm/qwen3.5-35b-a3b-instruct`, `litellm/qwen3-coder-next-instruct` |
+
+### Error Behavior
+
+When a forbidden model is configured:
+- **Before execution**: Preflight validation runs before `opencode run` invocation
+- **Actionable error message** returned immediately (no retry loop):
+  ```
+  [JOO-10 Model Policy Violation] Model "litellm/qwen3.5-122b-a10b-instruct" is not allowed.
+  Reason: Context size limits frequently exceeded; prone to MidStreamFallbackError
+  Recommended alternatives: litellm/qwen3.5-35b-a3b-instruct, litellm/qwen3-coder-next-instruct
+  ```
+- **No automatic retries**: Unlike JOO-9 behavior that caused infinite retry loops on unsupported models
+- **Adaptive fallback available via config**: Operators can specify `fallbackModels` in runtime config to auto-switch to alternatives
+
+### Implementation Locations
+
+- Policy definition: `/root/paperclip/packages/adapters/opencode-local/src/index.ts`
+- Validation logic: `/root/paperclip/packages/adapters/opencode-local/src/server/models.ts`
+
+### Updating the Policy
+
+To add a new forbidden model or change recommendations:
+
+1. Edit `MODEL_COMPATIBILITY_POLICY` in `/root/paperclip/packages/adapters/opencode-local/src/index.ts`
+2. Update this documentation section
+3. Commit changes with note about why the model was blocked
+4. Deploy updated adapter (no database migration required)
+
+---
+
+pos
 # Paperclip Deploy Operations
 
 This deployment keeps runtime/config data inside `/root/paperclip`.
@@ -11,6 +54,7 @@ This deployment keeps runtime/config data inside `/root/paperclip`.
 
 The systemd service runs the repo-tracked server dev entrypoint (`pnpm --filter @paperclipai/server dev`), so the checkout must stay buildable and the update script should keep the live service unit in sync before restart.
 The update script also syncs `/etc/systemd/system/paperclip.service` from this repo before restarting, so service changes travel with deploy updates.
+This deployment also pins the runtime PostgreSQL pool with `PAPERCLIP_DB_POOL_MAX=4` so the app stays below the reserved-slot ceiling of the hosted cluster.
 
 ## Install / Refresh Service
 
@@ -63,6 +107,8 @@ For the current public deployment, set:
 ```bash
 PAPERCLIP_PUBLIC_URL=https://paper.joonsoo.me
 ```
+
+If Postgres connection pressure returns, adjust `PAPERCLIP_DB_POOL_MAX` in `/root/paperclip/deploy/.env` first before touching the database server itself.
 
 ## Operational Checklist
 

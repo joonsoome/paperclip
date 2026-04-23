@@ -39,6 +39,10 @@ This starts:
 
 `pnpm dev` runs the server in watch mode and restarts on changes from workspace packages (including adapter packages). Use `pnpm dev:once` to run without file watching.
 
+If you run the workspace as `root` inside a dedicated container, the embedded PostgreSQL bootstrap will create a local `postgres` system user on first use when needed. That keeps `pnpm dev` and `pnpm paperclipai run` working without switching to a non-root account.
+
+If this checkout stays under `/root`, make sure the generated `postgres` user can traverse the workspace path. A dedicated container can usually do that with execute-only access on `/root`.
+
 `pnpm dev:once` auto-applies pending local migrations by default before starting the dev server.
 
 `pnpm dev` and `pnpm dev:once` are now idempotent for the current repo and instance: if the matching Paperclip dev runner is already alive, Paperclip reports the existing process instead of starting a duplicate.

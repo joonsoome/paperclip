@@ -157,6 +157,7 @@ type EmbeddedPostgresCtor = new (opts: {
   port: number;
   persistent: boolean;
   initdbFlags?: string[];
+  createPostgresUser?: boolean;
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -201,6 +202,31 @@ export type SeededWorktreeExecutionQuarantineSummary = {
 
 function nonEmpty(value: string | null | undefined): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
+}
+
+async function ensureParentTraversalAccess(targetPath: string): Promise<void> {
+  if (!shouldCreatePostgresUser()) return;
+
+  let currentDir = path.resolve(targetPath);
+  while (true) {
+    currentDir = path.dirname(currentDir);
+    if (currentDir === path.dirname(currentDir) || currentDir === "/") {
+      break;
+    }
+
+    try {
+      const stat = await fsPromises.stat(currentDir);
+      if ((stat.mode & 0o001) === 0) {
+        await fsPromises.chmod(currentDir, stat.mode | 0o001);
+      }
+    } catch {
+      // Best effort. Some parent dirs may disappear between discovery and chmod.
+    }
+  }
 }
 
 function isCurrentSourceConfigPath(sourceConfigPath: string): boolean {
@@ -1072,6 +1098,7 @@ async function ensureEmbeddedPostgres(dataDir: string, preferredPort: number): P
 
   const port = await findAvailablePort(preferredPort);
   const logBuffer = createEmbeddedPostgresLogBuffer();
+  await ensureParentTraversalAccess(dataDir);
   const instance = new EmbeddedPostgres({
     databaseDir: dataDir,
     user: "paperclip",
@@ -1079,6 +1106,7 @@ async function ensureEmbeddedPostgres(dataDir: string, preferredPort: number): P
     port,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: logBuffer.append,
     onError: logBuffer.append,
   });
@@ -1311,6 +1339,7 @@ async function seedWorktreeDatabase(input: {
       backupDir: path.resolve(input.targetPaths.backupDir, "seed"),
       retention: { dailyDays: 7, weeklyWeeks: 4, monthlyMonths: 1 },
       filenamePrefix: `${input.instanceId}-seed`,
+      backupEngine: "javascript",
       includeMigrationJournal: true,
       excludeTables: seedPlan.excludedTables,
       nullifyColumns: seedPlan.nullifyColumns,

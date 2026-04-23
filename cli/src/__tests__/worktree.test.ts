@@ -55,6 +55,10 @@ const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const itEmbeddedPostgres = embeddedPostgresSupport.supported ? it : it.skip;
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
+}
+
 if (!embeddedPostgresSupport.supported) {
   console.warn(
     `Skipping embedded Postgres worktree CLI tests on this host: ${embeddedPostgresSupport.reason ?? "unsupported environment"}`,
@@ -579,6 +583,7 @@ describe("worktree helpers", () => {
           port: targetConfig.database.embeddedPostgresPort,
           persistent: true,
           initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+          createPostgresUser: shouldCreatePostgresUser(),
           onLog: () => {},
           onError: () => {},
         });

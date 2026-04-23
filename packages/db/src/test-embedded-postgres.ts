@@ -17,6 +17,7 @@ type EmbeddedPostgresCtor = new (opts: {
   port: number;
   persistent: boolean;
   initdbFlags?: string[];
+  createPostgresUser?: boolean;
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -32,6 +33,10 @@ export type EmbeddedPostgresTestDatabase = {
 };
 
 let embeddedPostgresSupportPromise: Promise<EmbeddedPostgresTestSupport> | null = null;
+
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
+}
 
 async function getEmbeddedPostgresCtor(): Promise<EmbeddedPostgresCtor> {
   const mod = await import("embedded-postgres");
@@ -75,6 +80,7 @@ async function probeEmbeddedPostgresSupport(): Promise<EmbeddedPostgresTestSuppo
     port,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: () => {},
     onError: () => {},
   });
@@ -114,6 +120,7 @@ export async function startEmbeddedPostgresTestDatabase(
     port,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: () => {},
     onError: () => {},
   });

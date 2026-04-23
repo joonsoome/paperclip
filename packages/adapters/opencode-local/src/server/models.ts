@@ -6,9 +6,31 @@ import {
   ensurePathInEnv,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
+import { MODEL_COMPATIBILITY_POLICY } from "../index.js";
 
 const MODELS_CACHE_TTL_MS = 60_000;
 const MODELS_DISCOVERY_TIMEOUT_MS = 20_000;
+
+// Model compatibility check result for JOO-10 guardrails
+export interface ModelCompatibilityResult {
+  compatible: boolean;
+  modelId: string;
+  reason?: string;
+  recommendedModels?: string[];
+}
+
+export function checkModelCompatibility(modelId: string): ModelCompatibilityResult {
+  const policy = MODEL_COMPATIBILITY_POLICY[modelId];
+  if (policy && policy.forbidden) {
+    return {
+      compatible: false,
+      modelId,
+      reason: policy.reason,
+      recommendedModels: policy.recommendedModels,
+    };
+  }
+  return { compatible: true, modelId };
+}
 
 export function resolveOpenCodeCommand(input: unknown): string {
   const envOverride =
@@ -175,10 +197,20 @@ export async function ensureOpenCodeModelConfiguredAndAvailable(input: {
   command?: unknown;
   cwd?: unknown;
   env?: unknown;
-}): Promise<AdapterModel[]> {
+}): Promise<{ models: AdapterModel[]; compatible: boolean; incompatibleReason?: string; recommendedModels?: string[] }> {
   const model = asString(input.model, "").trim();
   if (!model) {
     throw new Error("OpenCode requires `adapterConfig.model` in provider/model format.");
+  }
+
+  // JOO-10: Check model compatibility policy before discovery (fast fail for forbidden models)
+  const compatibilityCheck = checkModelCompatibility(model);
+  if (!compatibilityCheck.compatible) {
+    throw new Error(
+      `[JOO-10 Model Policy Violation] Model "${model}" is not allowed.\n` +
+      `Reason: ${compatibilityCheck.reason}\n` +
+      `Recommended alternatives: ${compatibilityCheck.recommendedModels?.join(", ") || "None"}`
+    );
   }
 
   const models = await discoverOpenCodeModelsCached({
@@ -198,7 +230,7 @@ export async function ensureOpenCodeModelConfiguredAndAvailable(input: {
     );
   }
 
-  return models;
+  return { models, compatible: true };
 }
 
 export async function listOpenCodeModels(): Promise<AdapterModel[]> {

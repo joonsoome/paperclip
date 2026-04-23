@@ -18,6 +18,7 @@ type EmbeddedPostgresCtor = new (opts: {
   port: number;
   persistent: boolean;
   initdbFlags?: string[];
+  createPostgresUser?: boolean;
   onLog?: (message: unknown) => void;
   onError?: (message: unknown) => void;
 }) => EmbeddedPostgresInstance;
@@ -87,6 +88,10 @@ async function loadEmbeddedPostgresCtor(): Promise<EmbeddedPostgresCtor> {
   }
 }
 
+function shouldCreatePostgresUser(): boolean {
+  return typeof process.getuid === "function" && process.getuid() === 0;
+}
+
 async function ensureEmbeddedPostgresConnection(
   dataDir: string,
   preferredPort: number,
@@ -141,6 +146,7 @@ async function ensureEmbeddedPostgresConnection(
     port: selectedPort,
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C", "--lc-messages=C"],
+    createPostgresUser: shouldCreatePostgresUser(),
     onLog: logBuffer.append,
     onError: logBuffer.append,
   });

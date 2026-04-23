@@ -53,3 +53,22 @@ Notes:
   runtime config with \`permission.external_directory=allow\` so headless runs do \
   not stall on approval prompts.
 `;
+
+
+// Model compatibility policy for JOO-10 guardrails
+// Models that should not be used directly and their recommended alternatives
+export const MODEL_COMPATIBILITY_POLICY: Record<string, { forbidden: boolean; reason: string; recommendedModels: string[] }> = {
+  // qwen3.5-122b variants - context size issues, prone to MidStreamFallbackError
+  "qwen/qwen3.5-122b": { 
+    forbidden: true,
+    reason: "Context size limits frequently exceeded; prone to MidStreamFallbackError",
+    recommendedModels: ["qwen/qwen3.5-35b", "qwen/qwen3-coder-next"]
+  },
+  "litellm/qwen3.5-122b-a10b-instruct": {
+    forbidden: true,
+    reason: "Context size limits frequently exceeded; prone to MidStreamFallbackError",
+    recommendedModels: ["litellm/qwen3.5-35b-a3b-instruct", "litellm/qwen3-coder-next-instruct"]
+  },
+};
+
+export { checkModelCompatibility, resolveOpenCodeCommand } from './server/models.js';
