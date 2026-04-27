@@ -56,3 +56,9 @@ tests/release-smoke/test-results/
 tests/release-smoke/playwright-report/
 .superset/
 .claude/worktrees/
+
+# Local-only deployment workspace and helpers.
+/deploy/.env
+/deploy/live/
+/deploy/paperclip.service
+/deploy/update-paperclip.sh

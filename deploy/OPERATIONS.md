@@ -48,12 +48,14 @@ This deployment keeps runtime/config data inside `/root/paperclip`.
 ## Layout
 
 - Runtime env: `/root/paperclip/deploy/.env`
+- Live worktree: `/root/paperclip/deploy/live`
 - Service unit source: `/root/paperclip/deploy/paperclip.service`
 - Update script: `/root/paperclip/deploy/update-paperclip.sh`
 - Example env template: `/root/paperclip/deploy/paperclip.env.example`
 
-The systemd service runs the repo-tracked server dev entrypoint (`pnpm --filter @paperclipai/server dev`), so the checkout must stay buildable and the update script should keep the live service unit in sync before restart.
-The update script also syncs `/etc/systemd/system/paperclip.service` from this repo before restarting, so service changes travel with deploy updates.
+The live service runs from the dedicated `deploy/live` worktree, which should stay pinned to a clean `upstream/master` line. That keeps deployment separate from the main development checkout and avoids rebase churn from local feature work.
+The update script bootstraps and refreshes that worktree, then syncs `/etc/systemd/system/paperclip.service` from the local deploy files before restarting.
+The deploy helper files above are intentionally local-only and ignored by git in this fork. Only the deployment docs and example env stay tracked.
 This deployment also pins the runtime PostgreSQL pool with `PAPERCLIP_DB_POOL_MAX=4` so the app stays below the reserved-slot ceiling of the hosted cluster.
 
 ## Install / Refresh Service
@@ -61,26 +63,18 @@ This deployment also pins the runtime PostgreSQL pool with `PAPERCLIP_DB_POOL_MA
 ```bash
 cd /root/paperclip
 cp deploy/paperclip.env.example deploy/.env
-pnpm install --frozen-lockfile
-pnpm build
-set -a; source /root/paperclip/deploy/.env; set +a
-pnpm db:migrate
-cp deploy/paperclip.service /etc/systemd/system/paperclip.service
-systemctl daemon-reload
+/root/paperclip/deploy/update-paperclip.sh
 systemctl enable --now paperclip
 ```
 
-If you only changed the service unit, run the `cp ... paperclip.service` and `systemctl daemon-reload` steps again, then restart the service after the next `pnpm build`.
+If you only changed the service unit, rerun the update script or copy the local service file to `/etc/systemd/system/paperclip.service`, then `systemctl daemon-reload` and restart `paperclip`.
 
 ## Initial Setup
 
 ```bash
 cd /root/paperclip
 cp deploy/paperclip.env.example deploy/.env
-pnpm install --frozen-lockfile
-pnpm build
-set -a; source /root/paperclip/deploy/.env; set +a
-pnpm db:migrate
+/root/paperclip/deploy/update-paperclip.sh
 ```
 
 ## Health Check
@@ -139,5 +133,5 @@ If Postgres connection pressure returns, adjust `PAPERCLIP_DB_POOL_MAX` in `/roo
 /root/paperclip/deploy/update-paperclip.sh
 ```
 
-By default the update script pulls from `upstream/<current-branch>` when that branch exists. Set `PAPERCLIP_UPDATE_REMOTE=origin` if you need to follow the fork remote instead.
-It also refreshes the systemd unit from `deploy/paperclip.service` and reloads systemd before the restart step.
+By default the update script pulls from the upstream default branch into the local `deploy/live` worktree. Set `PAPERCLIP_UPDATE_REMOTE=origin` if you need to follow the fork remote instead.
+It refreshes the systemd unit from the local deploy file and reloads systemd before the restart step.
