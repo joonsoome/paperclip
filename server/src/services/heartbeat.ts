@@ -848,7 +848,7 @@ export function compactRunLogChunk(chunk: string, maxChars = MAX_PERSISTED_LOG_C
 function normalizeMaxConcurrentRuns(value: unknown) {
   const parsed = Math.floor(asNumber(value, HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT));
   if (!Number.isFinite(parsed)) return HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT;
-  return Math.max(HEARTBEAT_MAX_CONCURRENT_RUNS_DEFAULT, Math.min(HEARTBEAT_MAX_CONCURRENT_RUNS_MAX, parsed));
+  return Math.max(1, Math.min(HEARTBEAT_MAX_CONCURRENT_RUNS_MAX, parsed));
 }
 
 interface WakeupOptions {
@@ -6810,52 +6810,56 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           return { kind: "deferred" as const };
         }
 
-        const wakeupRequest = await tx
-          .insert(agentWakeupRequests)
-          .values({
-            companyId: agent.companyId,
-            agentId,
-            source,
-            triggerDetail,
-            reason,
-            payload,
-            status: "queued",
-            requestedByActorType: opts.requestedByActorType ?? null,
-            requestedByActorId: opts.requestedByActorId ?? null,
-            idempotencyKey: opts.idempotencyKey ?? null,
-          })
-          .returning()
-          .then((rows) => rows[0]);
+        const queuedOutcome = await withAgentStartLock(agent.id, async () => {
+          const wakeupRequest = await tx
+            .insert(agentWakeupRequests)
+            .values({
+              companyId: agent.companyId,
+              agentId,
+              source,
+              triggerDetail,
+              reason,
+              payload,
+              status: "queued",
+              requestedByActorType: opts.requestedByActorType ?? null,
+              requestedByActorId: opts.requestedByActorId ?? null,
+              idempotencyKey: opts.idempotencyKey ?? null,
+            })
+            .returning()
+            .then((rows) => rows[0]);
 
-        const newRun = await tx
-          .insert(heartbeatRuns)
-          .values({
-            companyId: agent.companyId,
-            agentId,
-            invocationSource: source,
-            triggerDetail,
-            status: "queued",
-            wakeupRequestId: wakeupRequest.id,
-            contextSnapshot: enrichedContextSnapshot,
-            sessionIdBefore: sessionBefore,
-            continuationAttempt,
-          })
-          .returning()
-          .then((rows) => rows[0]);
+          const newRun = await tx
+            .insert(heartbeatRuns)
+            .values({
+              companyId: agent.companyId,
+              agentId,
+              invocationSource: source,
+              triggerDetail,
+              status: "queued",
+              wakeupRequestId: wakeupRequest.id,
+              contextSnapshot: enrichedContextSnapshot,
+              sessionIdBefore: sessionBefore,
+              continuationAttempt,
+            })
+            .returning()
+            .then((rows) => rows[0]);
 
-        await tx
-          .update(agentWakeupRequests)
-          .set({
-            runId: newRun.id,
-            updatedAt: new Date(),
-          })
-          .where(eq(agentWakeupRequests.id, wakeupRequest.id));
+          await tx
+            .update(agentWakeupRequests)
+            .set({
+              runId: newRun.id,
+              updatedAt: new Date(),
+            })
+            .where(eq(agentWakeupRequests.id, wakeupRequest.id));
 
-        // executionRunId is NOT stamped here (enqueueWakeup queues the run but
-        // doesn't start it). It will be stamped in claimQueuedRun() once the run
-        // transitions to "running" — Fix A (lazy locking).
+          // executionRunId is NOT stamped here (enqueueWakeup queues the run but
+          // doesn't start it). It will be stamped in claimQueuedRun() once the run
+          // transitions to "running" — Fix A (lazy locking).
 
-        return { kind: "queued" as const, run: newRun };
+          return { kind: "queued" as const, run: newRun };
+        });
+
+        return queuedOutcome;
       });
 
       if (outcome.kind === "deferred" || outcome.kind === "skipped") return null;
